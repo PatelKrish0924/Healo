@@ -24,8 +24,11 @@ import os
 #  APP CONFIG
 # ─────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = "healo_secret_2024_change_in_production"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///healo.db"
+app.secret_key = os.environ.get("SECRET_KEY","1be2b52744839e1b5dfafae8297598457460c3dc783f425c6f74204f4f1f6203")
+import os
+basedir = os.path.abspath(os.path.dirname(__file__))
+db_path = os.path.join(basedir, "healo.db")
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -1797,10 +1800,34 @@ def seed_data():
 # ─────────────────────────────────────────────
 #  MAIN
 # ─────────────────────────────────────────────
-if __name__ == "__main__":
-    with app.app_context():
+@app.route("/debug-init")
+def debug_init():
+    try:
         db.create_all()
         seed_data()
+        user_count = User.query.count()
+        return f"✅ DB OK — Users: {user_count}, Tables created successfully"
+    except Exception as e:
+        return f"❌ Error: {str(e)}", 500
+
+@app.errorhandler(500)
+def internal_error(e):
+    db.session.rollback()
+    return f"<h2>Error:</h2><pre>{str(e)}</pre>", 500
+
+@app.errorhandler(404)
+def not_found(e):
+    return redirect(url_for("login"))
+
+with app.app_context():
+    try:
+        db.create_all()
+        seed_data()
+        print("✅ Database ready")
+    except Exception as e:
+        print(f"❌ DB Error: {e}")
+
+if __name__ == "__main__":
     print("\n🏥  Healo Hospital System is RUNNING")
     print("🌐  Open: http://localhost:5000\n")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000)

@@ -25,10 +25,16 @@ import os
 # ─────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "healo_secret_dev_fallback_2024")
-database_url = os.environ.get("DATABASE_URL", "sqlite:///healo.db")
+
+# Get database URL from environment (defaults to local SQLite if not found)
+database_url = os.environ.get("DATABASE_URL")
+if not database_url:
+    database_url = "sqlite:///healo.db"
+
 # Render gives postgres:// but SQLAlchemy needs postgresql://
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
@@ -1160,7 +1166,6 @@ DOCTOR_PROFILE = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock %}", "
       </div>
       <div class="form-group" style="margin-top:1rem;"><label>Bio</label><textarea name="bio">{{ profile.bio or '' }}</textarea></div>
 
-      <!-- Info box: fee is set during diagnosis -->
       <div style="margin-top:1.2rem;background:#fef3c7;border:1.5px solid var(--warn);border-radius:12px;padding:1rem;">
         <div style="font-size:.85rem;font-weight:700;color:#92400e;margin-bottom:.4rem;">💰 About Your Consultation Fee</div>
         <div style="font-size:.83rem;color:#78350f;line-height:1.6;">
@@ -1214,7 +1219,6 @@ DOCTOR_COMPLETE = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock %}", 
         <span style="font-size:.78rem;color:var(--muted);">Your charge for this appointment. Platform fee & tax are set by Healo and applied automatically.</span>
       </div>
 
-      <!-- Fee breakdown preview -->
       <div style="background:linear-gradient(135deg,#f0fdfa,#ccfbf1);border:1.5px solid var(--teal);border-radius:12px;padding:1.1rem;margin-bottom:1.5rem;">
         <div style="font-size:.8rem;font-weight:700;color:var(--teal2);margin-bottom:.7rem;">💳 Patient Will Be Charged (Model A)</div>
         <div style="display:flex;flex-direction:column;gap:.32rem;font-size:.85rem;">
@@ -1400,7 +1404,6 @@ BOOK_APPOINTMENT = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock %}",
             <div style="font-size:.85rem;color:var(--teal2);" id="doc-spec-disp">—</div>
           </div>
 
-          <!-- FEE BREAKDOWN BOX -->
           <div id="fee-box" style="background:#fff;border:1.5px solid var(--teal);border-radius:12px;padding:1rem;margin-bottom:1rem;">
             <div style="font-size:.82rem;font-weight:700;color:var(--teal2);margin-bottom:.7rem;">💳 Fee Breakdown (Model A)</div>
             <div style="display:flex;flex-direction:column;gap:.35rem;font-size:.85rem;">
@@ -1425,7 +1428,6 @@ BOOK_APPOINTMENT = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock %}",
                 <span id="fb-total" style="color:var(--teal);">₹0.00</span>
               </div>
             </div>
-            <!-- Patient message -->
             <div id="fb-msg" style="margin-top:.8rem;background:#f0fdfa;border-left:3px solid var(--teal);padding:.6rem .8rem;border-radius:0 8px 8px 0;font-size:.82rem;color:var(--dark);line-height:1.5;"></div>
           </div>
           <div class="form-group" style="margin-bottom:1rem;">
@@ -1554,7 +1556,6 @@ PATIENT_APPOINTMENTS = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock 
   <div class="card" style="margin-bottom:1.2rem;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
 
-      <!-- Left: appointment info -->
       <div style="flex:1;min-width:220px;">
         <div style="font-size:1rem;font-weight:700;margin-bottom:.3rem;">
           Dr. {{ a.doctor.name }}
@@ -1572,7 +1573,6 @@ PATIENT_APPOINTMENTS = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock 
         {% endif %}
       </div>
 
-      <!-- Right: fee breakdown box -->
       <div style="min-width:270px;max-width:320px;background:linear-gradient(135deg,#f0fdfa,#fff);border:1.5px solid var(--teal);border-radius:12px;padding:1rem;">
         <div style="font-size:.78rem;font-weight:700;color:var(--teal2);margin-bottom:.6rem;">💳 Fee Breakdown</div>
         <div style="display:flex;flex-direction:column;gap:.3rem;font-size:.82rem;">
@@ -1613,7 +1613,6 @@ PATIENT_APPOINTMENTS = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock 
       </div>
     </div>
 
-    <!-- Actions row -->
     <div style="margin-top:.8rem;padding-top:.8rem;border-top:1px solid #f1f5f9;display:flex;gap:.6rem;">
       {% if a.status in ['pending', 'confirmed'] %}
       <a href="{{ url_for('patient_cancel_appt', aid=a.id) }}"
@@ -1667,7 +1666,6 @@ PATIENT_RECORDS = BASE_TEMPLATE.replace("{% block title %}Healo{% endblock %}", 
       </div>
       {% endif %}
     </div>
-    <!-- Fee breakdown from record snapshot -->
     <div style="background:linear-gradient(135deg,#f0fdfa,#fff);border:1.5px solid var(--teal);border-radius:10px;padding:.9rem;">
       <div style="font-size:.78rem;font-weight:700;color:var(--teal2);margin-bottom:.6rem;">💳 Fee Paid at Clinic</div>
       <div style="display:flex;flex-wrap:wrap;gap:.5rem 2rem;font-size:.83rem;">
@@ -2352,12 +2350,15 @@ def seed_data():
     print("  └─────────────────────────────────────────┘\n")
 
 # ─────────────────────────────────────────────
-#  MAIN
+#  MAIN / INITIALIZATION
 # ─────────────────────────────────────────────
+# 1. Run this globally so Gunicorn executes it on startup
+with app.app_context():
+    db.create_all()
+    seed_data()
+
+# 2. Local development server
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-        seed_data()
     print("\n🏥  Healo Hospital System is RUNNING")
     print("🌐  Open: http://localhost:5000\n")
     app.run(debug=True, host="0.0.0.0", port=5000)
